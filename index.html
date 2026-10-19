@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -7,6 +6,8 @@
 <title>RESICOL</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800&display=swap">
 <link rel="stylesheet" href="css/styles.css">
+<script defer src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<style>.tabs{display:flex;gap:6px;background:var(--soft);border-radius:30px;padding:5px;margin-bottom:16px}.tabs button{flex:1;border:0;border-radius:26px;padding:12px 6px;background:none;color:var(--text);font:800 15px Nunito,sans-serif;cursor:pointer}.tabs button.on{background:var(--dark);color:#fff}.view video,.view img.shot{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.manual{display:flex;gap:8px;margin-top:14px}.manual input{flex:1;min-width:0;border:2px solid var(--lime);border-radius:26px;padding:0 16px;height:48px;background:var(--bg);color:var(--text);font:700 16px Nunito,sans-serif}.manual button{border:0;border-radius:26px;padding:0 18px;background:var(--lime);color:var(--dark);font:800 15px Nunito,sans-serif;cursor:pointer}.status{text-align:center;font-size:13px;color:var(--muted);margin-top:8px}.result{margin-top:20px;border-radius:26px;background:var(--card);padding:20px;box-shadow:0 4px 14px rgba(0,0,0,.08);border-left:12px solid var(--lime)}.result h2{margin:0 0 6px;font-size:23px}.result p{margin:8px 0;color:var(--muted);line-height:1.45}.meter{height:8px;border-radius:6px;background:var(--soft);overflow:hidden;margin:6px 0}.meter i{display:block;height:100%;background:var(--lime)}.prod{display:flex;gap:14px;align-items:center}.prod img{width:84px;height:84px;object-fit:contain;border-radius:16px;background:#fff;flex:none}.result .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.result .grid div{background:var(--soft);border-radius:16px;padding:10px 12px;font-size:13px;color:var(--muted)}.result .grid b{display:block;color:var(--text);font-size:15px;margin-top:2px;word-break:break-word}.textbtn{background:none;border:0;padding:6px 0;margin-top:6px;color:var(--muted);font:700 14px Nunito,sans-serif;text-decoration:underline;cursor:pointer}#pb{height:8px;border-radius:8px;background:var(--soft);overflow:hidden;margin-top:10px}#pbi{display:block;height:100%;width:2%;background:var(--lime);transition:width .2s}</style>
 </head>
 <body>
 <header><div class="bar"><div class="brand"><div class="logo">🌱</div><span id="ttl"></span></div><div class="tag">RESICOL ♻️</div></div></header>
@@ -20,9 +21,11 @@
 <div class="tri"><button data-go="escanear"><i>🔎</i>Identifica</button><button data-go="tutoriales"><i>🎨</i>Transforma</button><button data-go="market"><i>💰</i>Emprende</button></div>
 </section>
 <section id="v-escanear" class="hidden">
-<div class="card"><div class="view"><div class="idle" id="idle">Apunta la cámara al residuo 📷</div><video id="video" class="hidden" playsinline muted></video><img id="shot" class="hidden" alt="Foto del residuo"></div>
-<button class="btn" id="sc">Escanear residuo</button><button class="link" id="up">o subir una foto</button><input type="file" id="file" accept="image/*" class="hidden">
-<div id="pb" style="height:8px;border-radius:8px;background:#0002;overflow:hidden;margin-top:10px"><i id="pbi" style="display:block;height:100%;width:2%;background:#2e9e4f;transition:width .2s"></i></div><p class="muted c" id="st" style="font-size:13px">Iniciando descarga de la IA…</p></div>
+<div class="tabs"><button id="t-mat" class="on">♻️ Material</button><button id="t-bar">🔢 Código de barras</button></div>
+<div class="card"><div class="view"><div class="idle" id="idle"><span id="hint">Apunta la cámara al residuo 📷</span></div><video id="video" class="hidden" playsinline muted></video><img id="shot" class="shot hidden" alt="Foto del residuo"></div>
+<button class="btn" id="go">Escanear residuo</button><button class="link" id="up">o subir / tomar una foto</button><input type="file" id="file" accept="image/*" capture="environment" class="hidden">
+<div class="manual hidden" id="manual"><input id="codeIn" inputmode="numeric" placeholder="o escribe el código (ej. 7702004003508)"><button id="codeBtn">Buscar</button></div>
+<div id="pb"><i id="pbi"></i></div><div class="status" id="status">Iniciando descarga de la IA…</div></div>
 <div id="out"></div>
 </section>
 <section id="v-tutoriales" class="hidden"></section>

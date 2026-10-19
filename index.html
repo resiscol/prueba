@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -6,8 +7,6 @@
 <title>RESICOL</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800&display=swap">
 <link rel="stylesheet" href="css/styles.css">
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
 </head>
 <body>
 <header><div class="bar"><div class="brand"><div class="logo">🌱</div><span id="ttl"></span></div><div class="tag">RESICOL ♻️</div></div></header>
@@ -23,7 +22,7 @@
 <section id="v-escanear" class="hidden">
 <div class="card"><div class="view"><div class="idle" id="idle">Apunta la cámara al residuo 📷</div><video id="video" class="hidden" playsinline muted></video><img id="shot" class="hidden" alt="Foto del residuo"></div>
 <button class="btn" id="sc">Escanear residuo</button><button class="link" id="up">o subir una foto</button><input type="file" id="file" accept="image/*" class="hidden">
-<p class="muted c" id="st" style="font-size:13px">Cargando modelo de reconocimiento…</p></div>
+<div id="pb" style="height:8px;border-radius:8px;background:#0002;overflow:hidden;margin-top:10px"><i id="pbi" style="display:block;height:100%;width:2%;background:#2e9e4f;transition:width .2s"></i></div><p class="muted c" id="st" style="font-size:13px">Iniciando descarga de la IA…</p></div>
 <div id="out"></div>
 </section>
 <section id="v-tutoriales" class="hidden"></section>

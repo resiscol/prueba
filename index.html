@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RESICOL</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
+</head>
+<body>
+<header><div class="bar"><div class="brand"><div class="logo">🌱</div><span id="ttl"></span></div><div class="tag">RESICOL ♻️</div></div></header>
+<main>
+<section id="v-inicio" class="c">
+<img src="assets/mascota.png" alt="Mascota RESICOL" width="170" style="max-width:60%;height:auto">
+<h1 style="font-size:42px;margin-top:8px">RESICOL ♻️</h1>
+<p class="q">“Recicla, transforma y genera oportunidades.”</p>
+<button class="btn" data-go="escanear" style="max-width:280px;margin:22px auto 0">Comenzar</button>
+<p class="muted" style="margin-top:22px">Aprende a identificar residuos, descubre cómo reutilizarlos y crea nuevas oportunidades.</p>
+<div class="tri"><button data-go="escanear"><i>🔎</i>Identifica</button><button data-go="tutoriales"><i>🎨</i>Transforma</button><button data-go="market"><i>💰</i>Emprende</button></div>
+</section>
+<section id="v-escanear" class="hidden">
+<div class="card"><div class="view"><div class="idle" id="idle">Apunta la cámara al residuo 📷</div><video id="video" class="hidden" playsinline muted></video><img id="shot" class="hidden" alt="Foto del residuo"></div>
+<button class="btn" id="sc">Escanear residuo</button><button class="link" id="up">o subir una foto</button><input type="file" id="file" accept="image/*" class="hidden">
+<p class="muted c" id="st" style="font-size:13px">Cargando modelo de reconocimiento…</p></div>
+<div id="out"></div>
+</section>
+<section id="v-tutoriales" class="hidden"></section>
+<section id="v-market" class="hidden"></section>
+<section id="v-perfil" class="hidden"></section>
+</main>
+<nav><div><button data-v="inicio"><i>🏠</i>Inicio</button><button data-v="escanear"><i>🔎</i>Escanear</button><button data-v="tutoriales"><i>🎨</i>Tutoriales</button><button data-v="market"><i>🛍️</i>Market</button><button data-v="perfil"><i>👤</i>Perfil</button></div></nav>
+<script src="js/utils.js"></script>
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script src="js/tutoriales.js"></script>
+<script src="js/market.js"></script>
+<script src="js/perfil.js"></script>
+<script src="js/eventos.js"></script>
+<script src="js/escaner.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

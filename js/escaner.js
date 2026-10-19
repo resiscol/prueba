@@ -5,9 +5,9 @@ const opts=()=>Object.keys(CAT).map(k=>`<button class="chip" data-k="${k}">${CAT
 
 const LABELS=[
 ['plastico','a plastic bottle'],['plastico','a plastic water bottle'],['plastico','a plastic soda bottle'],['plastico','a plastic shampoo or lotion bottle'],['plastico','a plastic cosmetic or cream jar'],['plastico','a plastic detergent bottle'],['plastico','a plastic bottle cap'],['plastico','a plastic bag'],['plastico','a plastic wrapper or film'],['plastico','a plastic cup'],['plastico','a plastic food container'],['plastico','a yogurt cup'],['plastico','plastic cutlery or a plastic straw'],
-['vidrio','a glass bottle'],['vidrio','a brown beer bottle'],['vidrio','a glass jar'],['vidrio','a drinking glass'],['vidrio','a glass perfume bottle'],
+['vidrio','a glass bottle'],['vidrio','a transparent glass bottle'],['vidrio','a green glass wine bottle'],['vidrio','a brown beer bottle'],['vidrio','a glass jar with a lid'],['vidrio','an empty glass jar'],['vidrio','a glass juice or soda bottle'],['vidrio','a drinking glass'],['vidrio','a glass perfume bottle'],['vidrio','shiny transparent glass'],
 ['metal','an aluminum can'],['metal','a tin food can'],['metal','an aerosol spray can'],['metal','aluminum foil'],['metal','a metal bottle cap'],['metal','a metal object'],
-['papel','a cardboard box'],['papel','a sheet of paper'],['papel','a newspaper or magazine'],['papel','a milk carton'],['papel','an egg carton'],['papel','a paper bag'],['papel','a cardboard tube'],
+['papel','a cardboard box'],['papel','a sheet of paper'],['papel','a newspaper or magazine'],['papel','an egg carton'],['papel','a paper bag'],['papel','a cardboard tube'],
 ['organico','a banana peel'],['organico','an apple core'],['organico','fruit'],['organico','vegetables'],['organico','leftover food'],['organico','eggshells'],['organico','bread'],['organico','coffee grounds'],['organico','leaves and plants'],
 ['raee','a mobile phone'],['raee','a laptop computer'],['raee','a battery'],['raee','a charger or electric cable'],['raee','headphones'],['raee','a light bulb'],['raee','a remote control'],['raee','a small electric appliance'],
 ['negra','a styrofoam container'],['negra','a snack or chip wrapper'],['negra','a cigarette butt'],['negra','a used tissue or napkin'],['negra','a piece of clothing'],['negra','a diaper'],['negra','a face mask'],['negra','a paper coffee cup'],['negra','a shoe or rubber'],['negra','a broken ceramic plate'],
@@ -35,7 +35,7 @@ function onProg(label){return d=>{
  bar(t?l/t*100:0,`${label}… ${(l/1048576).toFixed(1)} de ${(t/1048576).toFixed(1)} MB · ${Math.round(l/t*100)}%`)}}
 
 async function buildTextEmb(lib,c,cb){
- const key='resicol_txt_v1_'+c.id+'_'+LABELS.length;
+ const key='resicol_txt_v2_'+c.id+'_'+LABELS.length;
  try{const k=JSON.parse(localStorage.getItem(key));if(k&&k.length===LABELS.length)return k}catch(e){}
  const tok=await cb.tok,tm=await cb.tm,texts=[],owner=[];
  LABELS.forEach((l,i)=>TEMPLATES.forEach(t=>{texts.push(t.replace('{}',l[1]));owner.push(i)}));
@@ -54,7 +54,7 @@ async function tryCand(c){
  for(const k in F)delete F[k];
  bar(2,'Iniciando…');
  const lib=await import(c.lib);lib.env.allowLocalModels=false;
- const p1=onProg('Descargando IA'),key='resicol_txt_v1_'+c.id+'_'+LABELS.length;
+ const p1=onProg('Descargando IA'),key='resicol_txt_v2_'+c.id+'_'+LABELS.length;
  let cached=false;try{const k=JSON.parse(localStorage.getItem(key));cached=k&&k.length===LABELS.length}catch(e){}
  /* todo se descarga EN PARALELO; si las etiquetas ya están guardadas, no se baja el modelo de texto */
  const jobs=[lib.AutoProcessor.from_pretrained(c.id,{progress_callback:p1}),
@@ -78,13 +78,13 @@ loadAI();
 const dims=el=>el.videoWidth?[el.videoWidth,el.videoHeight]:el.naturalWidth?[el.naturalWidth,el.naturalHeight]:[el.width,el.height];
 function crop(el,x,y,w,h,max){const s=Math.min(1,max/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*s);c.height=Math.round(h*s);c.getContext('2d').drawImage(el,x,y,w,h,0,0,c.width,c.height);return c}
 async function embed(c){const img=await TF.RawImage.read(c.toDataURL('image/jpeg',.9)),{image_embeds}=await vis(await proc(img));return norm(image_embeds.data)}
-const PRIOR={raee:.6};
+const PRIOR={raee:.6,vidrio:1.4};
 async function recognize(el){
  const [w,h]=dims(el),views=[crop(el,0,0,w,h,448),crop(el,w*.15,h*.15,w*.7,h*.7,448)];
  let v=null;for(const c of views){const e=await embed(c);v=v?addv(v,e):e}
  v=norm(v);const p=softmax(textEmb.map(t=>100*dot(t,v))),by={};
- p.forEach((x,i)=>{const k=LABELS[i][0];by[k]=(by[k]||0)+x});
- const g=Object.keys(by).map(k=>({k,p:by[k]*(PRIOR[k]||1)})),t=g.reduce((a,b)=>a+b.p,0)||1;
+ p.forEach((x,i)=>{const k=LABELS[i][0];(by[k]=by[k]||[]).push(x)});
+ const g=Object.keys(by).map(k=>({k,p:by[k].sort((a,b)=>b-a).slice(0,3).reduce((a,b)=>a+b,0)*(PRIOR[k]||1)})),t=g.reduce((a,b)=>a+b.p,0)||1;
  g.forEach(x=>x.p/=t);return g.sort((a,b)=>b.p-a.p)}
 
 function show(k,conf,man,alt){const c=MAT[k],b=BINS[c.b];
@@ -108,3 +108,4 @@ async function startCam(){try{stream=await navigator.mediaDevices.getUserMedia({
 scb.onclick=()=>{if(!stream)return startCam();const c=document.createElement('canvas');c.width=video.videoWidth;c.height=video.videoHeight;c.getContext('2d').drawImage(video,0,0);analyze(c)};
 $('up').onclick=()=>file.click();
 file.onchange=()=>{const f=file.files[0];if(!f)return;stopCam();shot.onload=async()=>{await analyze(shot);URL.revokeObjectURL(shot.src)};shot.src=URL.createObjectURL(f);shot.classList.remove('hidden');idle.classList.add('hidden');file.value=''};
+

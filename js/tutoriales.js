@@ -1,6 +1,0 @@
-/* ---- Tutoriales ---- */
-function rT(){const el=$('v-tutoriales'),fav=me?users[me].favs:[];
-if(openT){const t=TUTS.find(x=>x.id===openT),f=fav.includes(t.id);
-el.innerHTML=`<button class="link" data-back>Volver a tutoriales</button><div class="card"><div class="thumb">${t.e}</div><h2>${t.t}</h2><span class="chip bin">Dificultad: ${t.d}</span><span class="chip bin">⏱ ${t.x} min</span><span class="chip bin">${CAT[t.m].e} ${CAT[t.m].n}</span><h3 style="margin-top:12px">Necesitas</h3><ul>${t.mat.map(x=>`<li>${x}</li>`).join('')}</ul><h3>Pasos</h3><ol>${t.st.map(x=>`<li>${x}</li>`).join('')}</ol><button class="btn s" data-fav="${t.id}">${f?'★ Quitar de favoritos':'☆ Guardar en favoritos'}</button></div>`;return}
-const L=TUTS.filter(t=>!filt||t.m===filt);
-el.innerHTML=`<h2>“Ideas para transformar” 🎨</h2>${filt?`<p class="muted">Ideas para ${CAT[filt].n.toLowerCase()}. Toca “Todos” para ver el resto.</p>`:''}<div style="margin-bottom:14px">${chips(filt,'f')}</div><div class="grid">${L.map(t=>`<div class="card" data-t="${t.id}"><div class="thumb">${t.e}</div><h3>${t.t}${fav.includes(t.id)?' ★':''}</h3><span class="chip bin" style="background:var(--pill)">Dificultad: ${t.d}</span><span class="chip bin" style="background:#ffd966;color:#222">⏱ ${t.x} min</span></div>`).join('')}</div>`}

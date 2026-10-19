@@ -1,9 +1,8 @@
-/* ---- Escáner RESICOL: CLIP (material) + código de barras ---- */
-(()=>{
 
-const $=id=>document.getElementById(id);
+/* ---- Escáner (IA CLIP + código de barras) ---- */
+(()=>{
 const video=$('video'),shot=$('shot'),idle=$('idle'),go=$('go'),out=$('out'),file=$('file'),statusEl=$('status');
-let stream=null,mode='mat',engine=null,lastCode=null,busy=false,matNote='';
+let stream=null,smode='mat',engine=null,lastCode=null,busy=false,matNote='';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function dec(s){const t=document.createElement('textarea');t.innerHTML=s;return t.value}
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
@@ -16,108 +15,139 @@ function crop(el,sx,sy,sw,sh,max){
 }
 
 /* ================= MATERIALES ================= */
-const CATS={};for(const k in CAT)CATS[k]={n:CAT[k].n,e:CAT[k].e,bin:CAT[k].b,tip:CAT[k].t};
-CATS.negra={n:'No aprovechable',e:'🗑️',bin:'negra',tip:'Si está sucio, mezclado o es de un solo uso (icopor, empaques metalizados, colillas), va a la bolsa negra.'};
+const CATS={
+  plastico:{n:'Plástico',e:'🧴',bin:'blanca',tip:'Vacíalo, aplástalo y ponle la tapa. Si está limpio y seco, va a la caneca blanca.',
+    re:/bottle|water bottle|pop bottle|water jug|plastic bag|bottlecap|pill bottle|soap dispenser|lotion|sunscreen|bucket|measuring cup|diaper|lighter|syringe|hair spray|toy/i},
+  vidrio:{n:'Vidrio',e:'🍾',bin:'blanca',tip:'Enjuágalo y envuélvelo si está roto para proteger a quien lo recoge. Va a la caneca blanca.',
+    re:/beer bottle|wine bottle|red wine|beer glass|goblet|perfume|vase|jar|cocktail shaker|pitcher|espresso|coffee mug/i},
+  metal:{n:'Metal',e:'🥫',bin:'blanca',tip:'Enjuaga la lata y aplástala para ahorrar espacio. Va a la caneca blanca.',
+    re:/milk can|ashcan|tin|frying pan|wok|caldron|cleaver|can opener|dumbbell|padlock|chain|nail|screw|hook|safety pin|hammer|corkscrew|strainer|colander/i},
+  papel:{n:'Papel / Cartón',e:'📦',bin:'blanca',tip:'Debe estar seco y sin grasa. Aplana las cajas y ponlas en la caneca blanca.',
+    re:/carton|envelope|paper towel|toilet tissue|binder|packet|comic book|book jacket|menu|newspaper|cardboard|crate|pencil box|file|jigsaw|tissue/i},
+  organico:{n:'Orgánico',e:'🍌',bin:'verde',tip:'Va a la caneca verde. Si puedes, úsalo para compostar en casa.',
+    re:/banana|orange|lemon|strawberry|granny smith|pineapple|fig|pomegranate|mushroom|broccoli|cauliflower|zucchini|cucumber|bell pepper|corn|artichoke|cabbage|squash|custard apple|jackfruit|bagel|pretzel|cheeseburger|hotdog|pizza|potato|burrito|guacamole|meat loaf|ice cream|dough/i},
+  negra:{n:'No aprovechable',e:'🗑️',bin:'negra',tip:'Si está sucio, mezclado o es de un solo uso (icopor, empaques metalizados, colillas), va a la caneca negra.',re:/^\b$/},
+  raee:{n:'Electrónico (RAEE)',e:'🔋',bin:'especial',tip:'No va a la basura común. Llévalo a un punto de recolección de residuos electrónicos o de pilas.',
+    re:/cellular telephone|mobile phone|laptop|notebook, notebook computer|mouse|remote control|iPod|hand-held computer|modem|monitor|screen|keyboard|joystick|radio|speaker|cassette|printer|calculator|digital clock|digital watch|dial telephone|power drill|electric fan|hair dryer|toaster|microwave|loudspeaker|CD player/i}
+};
+for(const k in CATS){CATS[k].re=new RegExp('\\b(?:'+CATS[k].re.source+')\\b','i')}
+const NEGRA={n:'No aprovechable',e:'🗑️',b:'negra',t:'Si está sucio, mezclado o es de un solo uso (icopor, empaques metalizados, colillas), va a la bolsa negra.'};
+for(const k in CATS){const s=k==='negra'?NEGRA:CAT[k];Object.assign(CATS[k],{n:s.n,e:s.e,bin:s.b,tip:s.t})}
+function recScan(k){if(!me||!users[me]||!CAT[k])return;const u=users[me];u.scans.unshift({k,t:Date.now()});u.scans=u.scans.slice(0,50);save()}
+const ORDER=['raee','organico','vidrio','plastico','papel','metal'];
 function binChip(k){const b=BINS[CATS[k].bin];return `<span class="chip bin" style="background:${b[0]};color:${b[1]}">${b[2]}</span>`}
-/* Descripciones por material: la IA decide el MATERIAL; el objeto no se muestra ni se adivina */
+function classify(preds){ // modo básico (MobileNet)
+  for(const p of preds){ if(p.probability<0.06) continue;
+    for(const k of ORDER){ if(CATS[k].re.test(p.className)) return {key:k,pred:p}; } }
+  return null;
+}
+
+/* Etiquetas para la IA precisa: [material, nombre en español, descripción en inglés para CLIP] */
 const LABELS=[
- ['plastico','a plastic bottle'],['plastico','a plastic water bottle'],['plastico','a plastic soda bottle'],
- ['plastico','a plastic shampoo or lotion bottle'],['plastico','a plastic container of talcum powder'],
- ['plastico','a plastic cosmetic or cream jar'],['plastico','a plastic deodorant or hygiene product'],
- ['plastico','a plastic detergent bottle'],['plastico','a plastic bottle cap'],['plastico','a plastic bag'],
- ['plastico','a plastic wrapper or film'],['plastico','a plastic cup'],['plastico','a plastic food container'],
- ['plastico','a yogurt cup'],['plastico','plastic cutlery or a plastic straw'],
- ['vidrio','a glass bottle'],['vidrio','a brown beer bottle'],['vidrio','a glass jar'],['vidrio','a drinking glass'],['vidrio','a glass perfume bottle'],
- ['metal','an aluminum can'],['metal','a tin food can'],['metal','an aerosol spray can'],['metal','aluminum foil'],
- ['metal','a metal bottle cap'],['metal','a metal object'],
- ['papel','a cardboard box'],['papel','a sheet of paper'],['papel','a newspaper or magazine'],['papel','a milk carton'],
- ['papel','an egg carton'],['papel','a paper bag'],['papel','a cardboard tube'],
- ['organico','a banana peel'],['organico','an apple core'],['organico','fruit'],['organico','vegetables'],['organico','leftover food'],
- ['organico','eggshells'],['organico','bread'],['organico','coffee grounds'],['organico','leaves and plants'],
- ['raee','a mobile phone'],['raee','a laptop computer'],['raee','a battery'],['raee','a charger or electric cable'],
- ['raee','headphones'],['raee','a light bulb'],['raee','a remote control'],['raee','a small electric appliance'],
- ['negra','a styrofoam container'],['negra','a snack or chip wrapper'],['negra','a cigarette butt'],['negra','a used tissue or napkin'],
- ['negra','a piece of clothing'],['negra','a diaper'],['negra','a face mask'],['negra','a paper coffee cup'],
- ['negra','a shoe or rubber'],['negra','a broken ceramic plate'],
- ['none','a person'],['none','a hand'],['none','an empty table or wall']
+ ['plastico','Botella de plástico','a plastic water bottle'],['plastico','Botella de gaseosa','a plastic soda bottle'],
+ ['plastico','Envase de aseo','a plastic detergent or shampoo bottle'],['plastico','Tapa plástica','a plastic bottle cap'],
+ ['plastico','Bolsa plástica','a plastic bag'],['plastico','Empaque plástico','a plastic wrapper or film'],
+ ['plastico','Vaso plástico','a plastic cup'],['plastico','Envase plástico','a plastic food container'],
+ ['plastico','Envase de yogur','a yogurt cup'],['plastico','Cubiertos o pitillo','plastic cutlery or a plastic straw'],
+ ['vidrio','Botella de vidrio','a glass bottle'],['vidrio','Botella de cerveza','a brown beer bottle'],
+ ['vidrio','Frasco de vidrio','a glass jar'],['vidrio','Vaso de vidrio','a drinking glass'],
+ ['metal','Lata de aluminio','an aluminum soda or beer can'],['metal','Lata de conservas','a tin food can'],
+ ['metal','Aerosol','an aerosol spray can'],['metal','Papel aluminio','aluminum foil'],
+ ['metal','Tapa metálica','a metal bottle cap'],['metal','Objeto metálico','a metal object'],
+ ['papel','Caja de cartón','a cardboard box'],['papel','Hoja de papel','a sheet of paper'],
+ ['papel','Periódico o revista','a newspaper or magazine'],['papel','Cartón de leche / Tetra Pak','a milk carton'],
+ ['papel','Cartón de huevos','an egg carton'],['papel','Bolsa de papel','a paper bag'],['papel','Tubo de cartón','a cardboard tube'],
+ ['organico','Cáscara de banano','a banana peel'],['organico','Resto de manzana','an apple core'],['organico','Fruta','fruit'],
+ ['organico','Verdura','vegetables'],['organico','Restos de comida','leftover food'],['organico','Cáscaras de huevo','eggshells'],
+ ['organico','Pan','bread'],['organico','Posos de café','coffee grounds'],['organico','Hojas o plantas','leaves and plants'],
+ ['raee','Celular','a mobile phone'],['raee','Computador','a laptop computer'],['raee','Pila / batería','a battery'],
+ ['raee','Cargador / cable','a charger or electric cable'],['raee','Audífonos','headphones'],['raee','Bombillo','a light bulb'],
+ ['raee','Control remoto','a remote control'],['raee','Electrodoméstico pequeño','a small electric appliance'],
+ ['negra','Icopor','a styrofoam container'],['negra','Empaque de snack','a snack or chip wrapper'],['negra','Colilla','a cigarette butt'],
+ ['negra','Servilleta usada','a used tissue or napkin'],['negra','Ropa / textil','a piece of clothing'],['negra','Pañal','a diaper'],
+ ['negra','Tapabocas','a face mask'],['negra','Vaso de papel con plástico','a paper coffee cup'],['negra','Zapato o caucho','a shoe or rubber'],
+ ['negra','Cerámica rota','a broken ceramic plate'],
+ ['none','Persona','a person'],['none','Mano','a hand'],['none','Fondo vacío','an empty table or wall']
 ];
-const TEMPLATES=['a photo of {}.','a close-up photo of {}, a piece of trash.'];
+const TEMPLATES=['a photo of {}.','a close-up photo of {}, a piece of trash.','{} on a table.'];
+const CLIP_ID='Xenova/clip-vit-base-patch32';
+const CACHE_KEY='resicol_txt_v2_'+LABELS.length+'_'+TEMPLATES.length;
+
 /* ---- Utilidades de vectores ---- */
 const norm=a=>{let s=0;for(const x of a)s+=x*x;s=Math.sqrt(s)||1;return Array.from(a,x=>x/s)};
 const addv=(a,b)=>a.map((x,i)=>x+b[i]);
 const dot=(a,b)=>{let s=0;for(let i=0;i<a.length;i++)s+=a[i]*b[i];return s};
 function softmax(l){const m=Math.max(...l),e=l.map(x=>Math.exp(x-m)),s=e.reduce((a,b)=>a+b,0);return e.map(x=>x/s)}
-const PRIOR={raee:.6};
-function aggregate(items){      // suma las probabilidades por material
+function aggregate(items){      // suma las probabilidades de todas las etiquetas del mismo material
   const by={};
-  for(const i of items){const b=by[i.key]||(by[i.key]={key:i.key,p:0});b.p+=i.probability}
-  const g=Object.values(by);g.forEach(x=>x.p*=(PRIOR[x.key]||1));
-  const t=g.reduce((a,b)=>a+b.p,0)||1;g.forEach(x=>x.p/=t);
-  return g.sort((a,b)=>b.p-a.p);
+  for(const i of items){const b=by[i.key]||(by[i.key]={key:i.key,p:0,best:i});b.p+=i.probability;if(i.probability>b.best.probability)b.best=i}
+  return Object.values(by).sort((a,b)=>b.p-a.p);
 }
 
-/* ---- Carga de la IA: descarga en paralelo, con barra y MB ---- */
-let TF=null,vis=null,proc=null,textEmb=null,pipe=null,coco=null;
-const CANDS=[
-  {lib:'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.1.2',id:'Xenova/mobileclip_s0',pad:'max_length',mb:50},
-  {lib:'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2',id:'Xenova/clip-vit-base-patch32',pad:true,mb:150}
-];
-const pb=$('pb'),pbi=$('pbi'),FL={};
-function setStatus(m,p){statusEl.textContent=m;if(p==null){pb.classList.add('hidden')}else{pb.classList.remove('hidden');pbi.style.width=Math.max(2,Math.min(100,p))+'%'}}
-function prog(label){return d=>{
-  if(d.status==='progress'&&d.total)FL[d.file]={l:d.loaded,t:d.total};
-  else if(d.status==='done'&&FL[d.file])FL[d.file].l=FL[d.file].t;else return;
-  let l=0,t=0;for(const k in FL){l+=FL[k].l;t+=FL[k].t}
-  setStatus(label+'… '+(l/1048576).toFixed(1)+' de '+(t/1048576).toFixed(1)+' MB · '+Math.round(l/t*100)+'%',l/t*100)}}
-function txtKey(c){return 'resicol_txt_v5_'+c.id+'_'+LABELS.length+'_'+TEMPLATES.length}
-async function buildTextEmb(lib,c,tok,tm){
-  const key=txtKey(c);
-  try{const k=JSON.parse(localStorage.getItem(key));if(k&&k.length===LABELS.length)return k}catch(e){}
+/* ---- Carga de modelos: CLIP (lo más preciso) → CLIP simple → MobileNet ---- */
+const pbar=p=>{const b=$('pbi');if(b)b.style.width=Math.max(2,Math.min(100,p||0))+'%'};
+const pbHide=()=>{const b=$('pb');if(b)b.classList.add('hidden')};
+const loadJS=src=>new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=no;document.head.appendChild(s)});
+let libsP=null;
+function libs(){return libsP||(libsP=(async()=>{
+  try{
+    await loadJS('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
+    await Promise.all([loadJS('https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js'),loadJS('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js')]);
+  }catch(e){console.error('tfjs',e)}
+})())}
+let TF=null,vis=null,proc=null,textEmb=null,pipe=null,coco=null,basic=null;
+async function loadClip(){
+  const pb=$('pb');if(pb)pb.classList.remove('hidden');
+  const prog=d=>{if(d.status==='progress'){statusEl.textContent='Descargando IA precisa… '+Math.round(d.progress)+'% (la 1.ª vez; luego queda guardada)';pbar(d.progress)}};
+  try{
+    statusEl.textContent='Descargando IA precisa… 0% (la 1.ª vez ~150 MB; luego queda guardada)';
+    TF=await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+    TF.env.allowLocalModels=false;
+  }catch(e){return fail(e)}
+  try{
+    proc=await TF.AutoProcessor.from_pretrained(CLIP_ID,{progress_callback:prog});
+    vis=await TF.CLIPVisionModelWithProjection.from_pretrained(CLIP_ID,{progress_callback:prog});
+    textEmb=await buildTextEmb(prog);
+    engine='clip';statusEl.textContent='IA precisa lista ✅';pbHide();loadCoco();return;
+  }catch(e){console.error('clip avanzado',e)}
+  try{
+    pipe=await TF.pipeline('zero-shot-image-classification',CLIP_ID,{progress_callback:prog});
+    engine='pipe';statusEl.textContent='IA precisa lista ✅ (modo compatible)';pbHide();return;
+  }catch(e){return fail(e)}
+}
+function fail(e){
+  console.error(e);pbHide();
+  statusEl.innerHTML='La IA precisa no cargó ('+esc(String(e&&e.message||e).slice(0,60))+'). Usando modo básico. <u id="retry" style="cursor:pointer">Reintentar</u>';
+  $('retry').onclick=loadClip;loadBasic();
+}
+async function buildTextEmb(prog){
+  try{const c=JSON.parse(localStorage.getItem(CACHE_KEY));if(c&&c.length===LABELS.length)return c}catch(e){}
+  statusEl.textContent='Preparando etiquetas (solo la primera vez)…';
+  const tok=await TF.AutoTokenizer.from_pretrained(CLIP_ID,{progress_callback:prog});
+  const tm=await TF.CLIPTextModelWithProjection.from_pretrained(CLIP_ID,{progress_callback:prog});
   const texts=[],owner=[];
-  LABELS.forEach((l,i)=>TEMPLATES.forEach(t=>{texts.push(t.replace('{}',l[1]));owner.push(i)}));
+  LABELS.forEach((l,i)=>TEMPLATES.forEach(t=>{texts.push(t.replace('{}',l[2]));owner.push(i)}));
   const acc=LABELS.map(()=>null);let j=0;
-  for(let i=0;i<texts.length;i+=16){
-    setStatus('Preparando etiquetas (solo la 1.ª vez)… '+Math.round(i/texts.length*100)+'%',i/texts.length*100);await sleep(10);
-    const {text_embeds}=await tm(tok(texts.slice(i,i+16),{padding:c.pad,truncation:true}));
+  for(let i=0;i<texts.length;i+=24){
+    const {text_embeds}=await tm(tok(texts.slice(i,i+24),{padding:true,truncation:true}));
     const n=text_embeds.dims[0],d=text_embeds.dims[1],data=text_embeds.data;
     for(let r=0;r<n;r++,j++){const v=norm(data.slice(r*d,(r+1)*d)),o=owner[j];acc[o]=acc[o]?addv(acc[o],v):v}
   }
-  try{await tm.dispose()}catch(e){}
   const fin=acc.map(v=>norm(v).map(x=>Math.round(x*1e4)/1e4));
-  try{localStorage.setItem(key,JSON.stringify(fin))}catch(e){}
+  try{localStorage.setItem(CACHE_KEY,JSON.stringify(fin))}catch(e){}
   return fin;
 }
-async function tryCand(c){
-  for(const k in FL)delete FL[k];
-  setStatus('Iniciando… (descarga aprox. '+c.mb+' MB, solo la 1.ª vez)',2);
-  const lib=await import(c.lib);lib.env.allowLocalModels=false;
-  const p=prog('Descargando IA');let cached=false;
-  try{const k=JSON.parse(localStorage.getItem(txtKey(c)));cached=!!(k&&k.length===LABELS.length)}catch(e){}
-  const jobs=[lib.AutoProcessor.from_pretrained(c.id,{progress_callback:p}),lib.CLIPVisionModelWithProjection.from_pretrained(c.id,{dtype:'q8',progress_callback:p})];
-  if(!cached)jobs.push(lib.AutoTokenizer.from_pretrained(c.id,{progress_callback:p}),lib.CLIPTextModelWithProjection.from_pretrained(c.id,{dtype:'q8',progress_callback:p}));
-  const [pr,v,tok,tm]=await Promise.all(jobs);
-  const te=await buildTextEmb(lib,c,tok,tm);
-  TF=lib;proc=pr;vis=v;textEmb=te;engine='clip';
-  setStatus('IA precisa lista ✅'+(c.mb<100?' (modelo ligero)':''));
-}
-async function loadClip(){
-  go.disabled=true;let last='';
-  for(let i=0;i<CANDS.length;i++){
-    try{await tryCand(CANDS[i]);go.disabled=false;loadCoco();return}
-    catch(e){last=String(e&&e.message||e).slice(0,80);console.error(CANDS[i].id,e);
-      if(i<CANDS.length-1){setStatus('El modelo ligero no cargó ('+last+'). Probando el clásico…',null);await sleep(1000)}}
+async function loadCoco(){try{await libs();if(typeof cocoSsd!=='undefined')coco=await cocoSsd.load({base:'lite_mobilenet_v2'})}catch(e){console.error('coco',e)}}
+async function loadBasic(){
+  await libs();
+  if(typeof mobilenet==='undefined') return;
+  const G='https://storage.googleapis.com/tfjs-models/savedmodel/';
+  for(const o of [{version:2,alpha:1.0,modelUrl:G+'mobilenet_v2_1.0_224/model.json'},{version:1,alpha:1.0,modelUrl:G+'mobilenet_v1_1.0_224/model.json'}]){
+    try{basic=await mobilenet.load(o);engine='basic';pbHide();return}catch(e){console.error(e)}
   }
-  go.disabled=false;
-  statusEl.innerHTML='No se pudo cargar la IA precisa: '+esc(last)+'. El código de barras sigue funcionando. <u id="retry" style="cursor:pointer">Reintentar</u>';
-  $('retry').onclick=loadClip;
 }
-function loadScript(u){return new Promise((ok,no)=>{const s=document.createElement('script');s.src=u;s.onload=ok;s.onerror=no;document.head.appendChild(s)})}
-async function loadCoco(){   // el detector de objetos se baja DESPUÉS, sin retrasar el inicio
-  try{await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
-    await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
-    coco=await cocoSsd.load({base:'lite_mobilenet_v2'})}catch(e){console.error('coco',e)}
-}
-loadClip();
+let started=false;
+window.initScan=()=>{if(started)return;started=true;loadClip()};
 
 /* ---- Reconocimiento ---- */
 const snap=v=>crop(v,0,0,v.videoWidth,v.videoHeight,640);
@@ -153,37 +183,47 @@ async function runClip(frames){
   for(const f of frames) for(const c of await views(f)){const e=await embedImage(c);v=v?addv(v,e):e}
   v=norm(v);
   const p=softmax(textEmb.map(t=>100*dot(t,v)));
-  return p.map((x,i)=>({key:LABELS[i][0],probability:x}));
+  return p.map((x,i)=>({className:LABELS[i][1],key:LABELS[i][0],probability:x}));
 }
 async function runPipe(f){
   const c=crop(f,0,0,...dims(f),448);
-  const res=await pipe(c.toDataURL('image/jpeg',.9),LABELS.map(l=>l[1]),{hypothesis_template:'a photo of {}'});
-  return res.map(r=>{const i=LABELS.findIndex(l=>l[1]===r.label);return {key:LABELS[i][0],probability:r.score}});
+  const res=await pipe(c.toDataURL('image/jpeg',.9),LABELS.map(l=>l[2]),{hypothesis_template:'a photo of {}'});
+  return res.map(r=>{const i=LABELS.findIndex(l=>l[2]===r.label);return {className:LABELS[i][1],key:LABELS[i][0],probability:r.score}});
 }
-async function recognize(frames){ return engine==='clip'?runClip(frames):runPipe(frames[0]) }
+async function runBasic(f){
+  const [w,h]=dims(f),m=new Map();
+  for(const src of [f,crop(f,w*.175,h*.175,w*.65,h*.65,448)])
+    for(const p of await basic.classify(src,5)){ if(!m.has(p.className)||m.get(p.className)<p.probability) m.set(p.className,p.probability) }
+  const preds=[...m].map(([className,probability])=>({className,probability})).sort((a,b)=>b.probability-a.probability);
+  const r=classify(preds);
+  return r?[{className:r.pred.className.split(',')[0],key:r.key,probability:.6}]:[{className:(preds[0]||{className:'?'}).className.split(',')[0],key:'unknown',probability:.1}];
+}
+async function recognize(frames){
+  if(engine==='clip') return runClip(frames);
+  if(engine==='pipe') return runPipe(frames[0]);
+  return runBasic(frames[0]);
+}
 
 function chipsHtml(){return Object.keys(CATS).map(k=>`<button class="chip" data-k="${k}">${CATS[k].e} ${CATS[k].n}</button>`).join('')}
-function showMat(key,groups,conf,warn,manual){
-  const c=CATS[key],alt=!manual&&groups&&groups[1]&&groups[1].key!=='none'&&groups[1].key!==key&&CATS[groups[1].key]&&groups[1].p>=.2?groups[1]:null;
+function showMat(key,best,groups,conf,warn,manual){
+  if(!manual)recScan(key);
+  const c=CATS[key],alt=groups&&groups[1]&&groups[1].key!=='none'&&groups[1].key!==key&&CATS[groups[1].key]&&groups[1].p>=.2?groups[1]:null;
   const level=conf>=.75?'Alta':conf>=.5?'Media':'Baja';
-  if(me&&CAT[key]){const a=users[me].scans;if(manual&&rec0)a[0]={k:key,t:Date.now()};else a.unshift({k:key,t:Date.now()});users[me].scans=a.slice(0,30);rec0=true;save()}
   out.innerHTML=`<div class="result"><h2>${c.e} ${c.n}</h2>${binChip(key)}
     <p>🧼 ${c.tip}</p>${matNote}
-    ${manual?'<p style="font-size:13px">Elegido manualmente.</p>':`<p style="font-size:13px;margin-bottom:2px">Seguridad ${level} (${Math.round(conf*100)}%)</p><div class="meter"><i style="width:${Math.round(conf*100)}%"></i></div>`}
+    ${best&&!manual?`<p style="font-size:13px;margin-bottom:2px">🔍 Detecté: <b>${esc(best.className)}</b> · Seguridad ${level} (${Math.round(conf*100)}%)</p><div class="meter"><i style="width:${Math.round(conf*100)}%"></i></div>`:''}
     ${alt?`<p style="font-size:13px;margin:4px 0">También podría ser: ${CATS[alt.key].n} ${Math.round(alt.p*100)}%</p>`:''}
     ${warn?`<p style="font-size:13px">${warn}</p>`:''}
-    ${CAT[key]?`<button class="btn" style="height:48px;margin-top:10px" data-m="${key}">Ver ideas para transformarlo</button>`:''}
-    <button class="textbtn" id="wrong">¿No es correcto?</button>
-    <div id="fix" class="hidden" style="margin-top:6px">${chipsHtml()}</div></div>`;
-  $('wrong').onclick=()=>$('fix').classList.toggle('hidden');
-  out.querySelectorAll('[data-k]').forEach(el=>el.onclick=()=>showMat(el.dataset.k,groups,0,'',true));
+    <p style="font-size:13px;margin-bottom:4px">${manual?'Elegido manualmente.':'¿No es correcto? Elige el material:'}</p>
+    <div>${chipsHtml()}</div></div>`;
+  out.querySelectorAll('[data-k]').forEach(el=>el.onclick=()=>showMat(el.dataset.k,null,groups,0,'',true));
 }
 function unknownMat(groups,warn){
-  const names=(groups||[]).filter(g=>CATS[g.key]).slice(0,2).map(g=>CATS[g.key].n);
+  const names=(groups||[]).filter(g=>g.key!=='none'&&g.key!=='unknown').slice(0,2).map(g=>esc(g.best.className));
   out.innerHTML=`<div class="result"><h2>🤔 No estoy seguro</h2>
-    <p>${names.length?'Podría ser '+names.join(' o ')+'. ':''}Acércalo, usa buena luz y fondo liso, o elige el material:</p>${matNote}${warn?`<p style="font-size:13px">${warn}</p>`:''}
+    <p>${names.length?'Parece: '+names.join(' / ')+'. ':''}Acércalo, usa buena luz y fondo liso, o elige el material:</p>${matNote}${warn?`<p style="font-size:13px">${warn}</p>`:''}
     <div>${chipsHtml()}</div></div>`;
-  out.querySelectorAll('[data-k]').forEach(el=>el.onclick=()=>showMat(el.dataset.k,groups,0,'',true));
+  out.querySelectorAll('[data-k]').forEach(el=>el.onclick=()=>showMat(el.dataset.k,null,groups,0,'',true));
 }
 
 /* ================= CÓDIGO DE BARRAS ================= */
@@ -279,6 +319,7 @@ async function showBarcode(code){
   }
   const p=res.p;let mats=matsFromProduct(p),est=false;
   if(!mats.length){mats=matsFromCategories(p);est=mats.length>0}
+  if(mats.length)recScan(mats[0]);
   out.innerHTML=`<div class="result">${prodCard(p,mats,est,`<p style="font-size:12px"><a href="https://${res.host}/product/${encodeURIComponent(code)}" target="_blank" rel="noopener" style="color:var(--muted)">Código ${esc(code)} · ficha completa ↗</a></p>`)}</div>`;
 }
 async function materialByCode(code,seen){
@@ -287,7 +328,8 @@ async function materialByCode(code,seen){
   const p=res.p;let mats=matsFromProduct(p),est=false;
   if(!mats.length){mats=matsFromCategories(p);est=mats.length>0}
   if(!mats.length){matNote=`<p style="font-size:13px">🏷️ Encontré “${esc(p.product_name||'el producto')}”, pero sin datos del empaque.</p>`;return false}
-  out.innerHTML=`<div class="result">${prodCard(p,mats,est,(seen?`<p style="font-size:13px">🔍 La cámara indica: ${esc(seen.className)} ${Math.round(seen.probability*100)}%</p>`:'')+'<button class="chip" id="more">🔢 Ver datos del código</button>')}</div>`;
+  recScan(mats[0]);
+  out.innerHTML=`<div class="result">${prodCard(p,mats,est,(seen?`<p style="font-size:13px">🔍 La cámara ve: ${esc(seen.className)} ${Math.round(seen.probability*100)}%</p>`:'')+'<button class="chip" id="more">🔢 Ver datos del código</button>')}</div>`;
   $('more').onclick=()=>{setMode('bar');showBarcode(code)};
   return true;
 }
@@ -299,30 +341,30 @@ async function analyzeBarcode(el){
 
 /* ================= ANÁLISIS DE MATERIAL ================= */
 async function analyzeMaterial(el){
-  matNote='';rec0=false;
+  matNote='';
   const frames=el===video?await grabFrames():[el];
   const warn=qualityWarn(frames[0]);
   const [code,items]=await Promise.all([detectBarcode(frames[0]),engine?recognize(frames):Promise.resolve(null)]);
   const groups=items?aggregate(items):null,top=groups?groups[0]:null;
   if(code){
     lastCode=code;
-    const seen=top&&top.key!=='none'?{className:CATS[top.key].n,probability:top.p}:null;
+    const seen=top&&top.key!=='none'&&top.key!=='unknown'?{className:top.best.className,probability:top.p}:null;
     if(await materialByCode(code,seen)) return;            // el código de barras tiene prioridad
   }
-  if(!top){out.innerHTML=`<div class="result"><h2>⏳ La IA precisa se está descargando</h2><p>Espera a que el estado diga “IA precisa lista ✅” y vuelve a escanear. El modo código de barras ya funciona.</p>${matNote}</div>`;return}
+  if(!top){statusEl.textContent='La IA todavía se está cargando, espera un momento…';if(matNote)out.innerHTML=`<div class="result">${matNote}</div>`;return}
   if(top.key==='none'&&top.p>=.45){out.innerHTML=`<div class="result"><h2>👀 No veo un residuo</h2><p>Acércalo y ponlo sobre un fondo liso con buena luz.</p>${matNote}</div>`;return}
-  if(top.key==='none'||top.p<.4){unknownMat(groups,warn);return}
-  showMat(top.key,groups,top.p,warn,false);
+  if(top.key==='unknown'||top.key==='none'||top.p<.4){unknownMat(groups,warn);return}
+  showMat(top.key,top.best,groups,top.p,warn,false);
 }
 
 /* ================= CÁMARA Y MODOS ================= */
 async function run(el){
   if(busy) return; busy=true;go.disabled=true;go.textContent='Analizando…';
-  try{ mode==='mat'?await analyzeMaterial(el):await analyzeBarcode(el) }
+  try{ smode==='mat'?await analyzeMaterial(el):await analyzeBarcode(el) }
   catch(e){console.error(e);out.innerHTML='<div class="result"><h2>Ups 😕</h2><p>No pude analizar la imagen.</p></div>'}
   busy=false;go.disabled=false;setBtn();
 }
-function setBtn(){go.textContent=stream?(mode==='mat'?'Capturar y reconocer':'Leer código ahora'):(mode==='mat'?'Escanear residuo':'Escanear código')}
+function setBtn(){go.textContent=stream?(smode==='mat'?'Capturar y reconocer':'Leer código ahora'):(smode==='mat'?'Escanear residuo':'Escanear código')}
 async function startCam(){
   try{
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}},audio:false});
@@ -341,7 +383,7 @@ async function loop(){          // lectura automática de códigos mientras la c
       const code=await detectBarcode(video);
       if(code&&code!==lastCode){
         lastCode=code;busy=true;go.disabled=true;
-        if(mode==='bar') await showBarcode(code);
+        if(smode==='bar') await showBarcode(code);
         else{matNote='';if(!await materialByCode(code,null)&&matNote) out.innerHTML=`<div class="result">${matNote}</div>`}
         busy=false;go.disabled=false;
       }
@@ -361,12 +403,12 @@ file.onchange=()=>{
 $('codeBtn').onclick=()=>{const c=$('codeIn').value.replace(/\D/g,'');c.length>=6?showBarcode(c):(out.innerHTML='<div class="result"><p>Escribe al menos 6 dígitos del código.</p></div>')};
 $('codeIn').onkeydown=e=>{if(e.key==='Enter')$('codeBtn').click()};
 function setMode(m){
-  mode=m;lastCode=null;out.innerHTML='';
+  smode=m;lastCode=null;out.innerHTML='';
   $('t-mat').classList.toggle('on',m==='mat');$('t-bar').classList.toggle('on',m==='bar');
   $('manual').classList.toggle('hidden',m!=='bar');
   $('hint').textContent=m==='mat'?'Apunta la cámara al residuo 📷':'Enfoca el código de barras del empaque 📷';
   setBtn();if(stream)loop();
 }
+window.stopCam=()=>{if(!stream)return;stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;video.classList.add('hidden');idle.classList.remove('hidden');setBtn()};
 $('t-mat').onclick=()=>setMode('mat');$('t-bar').onclick=()=>setMode('bar');
-window.stopCam=()=>{if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}video.srcObject=null;video.classList.add('hidden');if(shot.classList.contains('hidden'))idle.classList.remove('hidden');setBtn()};
 })();
